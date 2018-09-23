@@ -8,7 +8,7 @@
 
 #define BUFFER_SIZE 500
 #define SMALLER_BUFFER_SIZE 50
-#define PORT 50002
+#define PORT 50001
 
 /* Appends preFix+sufFIx into string target*/
 void append(char *target, char *preFix, char *sufFix) {
@@ -23,9 +23,7 @@ char * substr(char * input, int start, int end) {
 
   for(i = start;i <= end; i++) {
     subString[i - start] = input[i];
-    printf("%d", i);
   }
-  printf("\n%d\n", i);
   subString[i] = '\0';
   
   return subString;
@@ -175,24 +173,6 @@ int main() {
       return 0;
   }
 
-  // Now we are initialized. Check if User sent the USER command and the user exists.
-  while (strcmp(substr(receiveBuffer, 0, 4), "USER") != 0){
-    reinitializeString(receiveBuffer);
-    printf("Buffer before receive: %s\n", receiveBuffer);
-    receivedMsgSize = recv(clientSocket, receiveBuffer, BUFFER_SIZE, 0);
-
-    char response[100];
-
-    append(response, error, "Invalid user-id, try again");
-
-    sentMsgSize = send(clientSocket, response, strlen(response), 0);
-    printf("Wrong Message: %s\n", receiveBuffer);
-  }
-
-  printf("Right message: %s\n", receiveBuffer);
-    close(clientSocket); 
-
-  // USER command was received. Read users.txt
   char fileName[] = "users.txt";
 
   FILE * usersFile;
@@ -210,8 +190,76 @@ int main() {
   /* Assuming that no more than 25 usernames and 25 passwords will be present.*/
   getCredentials(credentials, 50, usersFile);
 
+  // Flag to check whether user is authenticated.
+  int authenticated = 0, userNameIndex = -1;
+
+  // Now we are initialized. Check if User sent the USER command and the user exists.
+  while (1){
+      reinitializeString(receiveBuffer);
+
+      receivedMsgSize = recv(clientSocket, receiveBuffer, BUFFER_SIZE, 0);
+
+      char response[100];
+
+      if (strcmp(substr(receiveBuffer, 0, 3), "USER") != 0) {
+        append(response, error, "Invalid user-id, try again");
+
+        sentMsgSize = send(clientSocket, response, strlen(response), 0);
+        
+        printf("Wrong Message: %s\n", receiveBuffer);
+        
+        continue;
+      }
+
+      char * userName = substr(receiveBuffer, 5, strlen(receiveBuffer));
+
+      printf("Username: %s\n", userName);
+      
+      // The command USER was entered now, check if username is valid or not.
+      for(i = 0;i < SMALLER_BUFFER_SIZE; i += 2) {
+        printf("Username: %s, stored: %s\n", userName, credentials[i]);
+        if ( strcmp( credentials[i], substr( receiveBuffer, 5, strlen(receiveBuffer) ) ) == 0 ) {
+          printf("%d\n", i);
+          userNameIndex = i;
+          state = "2";
+          authenticated = 1;
+
+          break;
+        }
+      }
+
+      printf("above breaking code\n");
+      if (authenticated) break; 
+      append(response, error, "Invalid user-id, try again");
+
+      sentMsgSize = send(clientSocket, response, strlen(response), 0);
+    }
+
+  printf("Received buffer:%s\n", receiveBuffer);
+  // Username is valid. Send prompt for password.
+  {
+    char response[SMALLER_BUFFER_SIZE];
+    append(response, success, "User-id valid, send password");
+    sentMsgSize = send(clientSocket, response, strlen(response), 0);
+  }
+
+  reinitializeString(receiveBuffer);
+
+  receivedMsgSize = recv(clientSocket, receiveBuffer, BUFFER_SIZE, 0);
+  
+  while( strcmp(receiveBuffer, credentials[userNameIndex + 1]) != 0) {
+    reinitializeString(receiveBuffer);
+
+    receivedMsgSize = recv(clientSocket, receiveBuffer, BUFFER_SIZE, 0);
+    char * response[SMALLER_BUFFER_SIZE];
+    append(response, error, "Wrong password, try again");
+    sentMsgSize = send(clientSocket, response, strlen(response), 0);
+  }
+  
+  close(clientSocket); 
+
+  // Free the memory taken up by credentials array.
   for(i = 0;i < 50; i++) {
-    printf("Credential: %s\n", credentials[i]);
     free(credentials[i]);
   }
 
