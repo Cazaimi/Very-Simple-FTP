@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
 
     struct sockaddr_in addr;
 
-    char *message, receiveBuffer[BUFFER_SIZE] = "\0", userName[100] = "\0";
+    char message[BUFFER_SIZE], receiveBuffer[BUFFER_SIZE] = "\0", userName[100] = "\0";
 
     // Get socket
     clientSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -77,8 +77,24 @@ int main(int argc, char* argv[]) {
       printf("%s\n", receiveBuffer);
     }
 
+    // Authenticated and ready to send file commands.
 
-    //User name was correct. Now enter password.
+    while(1) {
+      reinitializeString(receiveBuffer);
+      reinitializeString(message);
+
+      scanf ("%[^\n]%*c", message);
+
+      sentMsgSize = send(clientSocket, message, strlen(message), 0);
+
+      receivedMsgSize = recv(clientSocket, receiveBuffer, BUFFER_SIZE, 0);
+      printf("%s\n", receiveBuffer);
+
+      if (strcmp(receiveBuffer, "+GoodBye") == 0) break;
+    }
+
+
+    // All operations over.
     close(clientSocket);
 
     return 0;

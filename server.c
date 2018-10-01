@@ -1,10 +1,11 @@
+#include <dirent.h>
+#include <netinet/in.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <string.h>
+#include <unistd.h>
 
 #define BUFFER_SIZE 500
 #define SMALLER_BUFFER_SIZE 50
@@ -29,7 +30,7 @@ char * substr(char * input, int start, int end) {
   return subString;
 }
 
-/*Sets all the characters to '\0' in the string passed.*/
+/*Sets all the characters to '\0' in the string passed, assuming that string length = BUFFER_SIZE*/
 void reinitializeString(char * input) {
   int i = 0;
   for(i = 0;i < BUFFER_SIZE; i++) input[i] = '\0';
@@ -86,6 +87,27 @@ void getCredentials(char * target[], int size, FILE * file) {
   j++;
 }
 
+/* Takes in a pre-allocated string and fills it with the contents of the current directory. Note: Do not forget to free the allocated string's memory after operation.*/
+void readDir(char * response) {
+  DIR *d;
+
+  struct dirent *dir;
+
+  d = opendir(".");
+
+  int i = 0;
+
+  if (d) {
+    while ((dir = readdir(d)) != NULL) {
+      printf("%d:%s\n", i, dir->d_name);
+      strcat(response, dir->d_name);
+      strcat(response, "\n");
+      i++;
+    }
+    closedir(d);
+  }
+}
+
 int main() {
   int serverSocket, clientSocket, i, receivedMsgSize, sentMsgSize,
   
@@ -96,7 +118,7 @@ int main() {
   char success[] = "+",
     error[] = "-",
     number[] = "#",
-    loggedIn[] = "1",
+    loggedIn[] = "!",
 
     /* For access control. 
     0 => Initialization to be done
@@ -228,7 +250,6 @@ int main() {
         }
       }
 
-      printf("above breaking code\n");
       if (authenticated) break; 
       append(response, error, "Invalid user-id, try again");
 
@@ -244,16 +265,72 @@ int main() {
   }
 
   reinitializeString(receiveBuffer);
-
-  receivedMsgSize = recv(clientSocket, receiveBuffer, BUFFER_SIZE, 0);
   
-  while( strcmp(receiveBuffer, credentials[userNameIndex + 1]) != 0) {
+  while(1) {
     reinitializeString(receiveBuffer);
 
     receivedMsgSize = recv(clientSocket, receiveBuffer, BUFFER_SIZE, 0);
-    char * response[SMALLER_BUFFER_SIZE];
-    append(response, error, "Wrong password, try again");
+
+    printf("%s\n", receiveBuffer);
+    
+    if (strcmp(receiveBuffer, credentials[userNameIndex + 1]) != 0) {
+      char * response[SMALLER_BUFFER_SIZE];
+      
+      sentMsgSize = send(clientSocket, response, strlen(response), 0);
+
+      printf("Wrong password: %s\n", receiveBuffer);
+      continue;
+    }
+
+    printf("Right password: %s\n", receiveBuffer);
+    char response[SMALLER_BUFFER_SIZE];
+
+    append(response, loggedIn, "\n \n Password is ok and you can begin file transfers.");
+
     sentMsgSize = send(clientSocket, response, strlen(response), 0);
+    break;
+  }
+
+  // If you are here, you have been authenticated. File operations can begin now.
+
+  while(1) {
+    reinitializeString(receiveBuffer);
+
+    char * response = malloc(sizeof(char) *BUFFER_SIZE);
+
+    receivedMsgSize = recv(clientSocket, receiveBuffer, BUFFER_SIZE, 0);
+
+    printf("log: received command: %s\n", receiveBuffer);
+
+    char * command;
+
+    command = substr(receiveBuffer, 0, 3);
+    if (strcmp(command, "LIST") == 0) {
+      append(response, success, "");
+      readDir(response);
+    }
+    else if (strcmp(command, "KILL") == 0) {
+
+    }
+    else if (strcmp(command, "RETR") == 0) {
+      
+    }
+    else if (strcmp(command, "DONE") == 0) {
+      append(response, success, "GoodBye");
+
+      sentMsgSize = send(clientSocket, response, strlen(response), 0);
+
+      printf("log: Message sent to client: %s:%d\n", response, sentMsgSize);
+
+      break;
+    }
+    else {
+      append(response, error, "Invalid Command, Please enter one of LIST, KILL OR RETR.");
+    }
+
+    sentMsgSize = send(clientSocket, response, strlen(response), 0);
+
+    printf("log: Message sent to client: %s:%d\n", response, sentMsgSize);
   }
   
   close(clientSocket); 
